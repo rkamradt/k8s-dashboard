@@ -1,0 +1,9 @@
+{
+  "name": "k8s-dashboard",
+  "version": "1.0.0",
+  "description": "Read-only Kubernetes cluster dashboard",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}

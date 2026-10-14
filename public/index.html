@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cluster Command · kamradtfamily.net</title>
+<style>
+/* ── Reset ──────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:           #020408;
+  --surface:      rgba(0, 229, 255, 0.04);
+  --border:       rgba(0, 229, 255, 0.18);
+  --border-hi:    rgba(0, 229, 255, 0.55);
+  --cyan:         #00e5ff;
+  --green:        #00e676;
+  --amber:        #ffab40;
+  --red:          #ff1744;
+  --blue:         #448aff;
+  --gray:         #546e7a;
+  --text:         #b2dfdb;
+  --text-dim:     #4a6572;
+  --font:         'Courier New', Courier, monospace;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; overflow-x: hidden; }
+
+/* Grid overlay */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(0,229,255,0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,0.022) 1px, transparent 1px);
+  background-size: 48px 48px;
+  z-index: 0; pointer-events: none;
+}
+/* Scanlines */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 4px);
+  z-index: 0; pointer-events: none;
+}
+
+/* ── Layout ─────────────────────────────────────────── */
+.page { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 0 20px 60px; }
+
+/* ── Header ─────────────────────────────────────────── */
+header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(2,4,8,0.96); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+  display: flex; align-items: center; gap: 20px;
+}
+
+.logo { flex: 1; }
+.logo-main { font-size: 17px; font-weight: bold; color: var(--cyan); text-shadow: 0 0 24px rgba(0,229,255,0.55); letter-spacing: 3px; }
+.logo-sub  { font-size: 10px; color: var(--text-dim); letter-spacing: 2px; margin-top: 3px; }
+
+.live-badge { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--green); letter-spacing: 2px; }
+.live-dot   { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: blink 1.6s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+.refresh-wrap { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-dim); }
+.countdown-svg { width: 30px; height: 30px; }
+
+/* ── Error banner ───────────────────────────────────── */
+#error-banner {
+  display: none; z-index: 2; position: relative;
+  background: rgba(255,23,68,0.12); border-bottom: 1px solid rgba(255,23,68,0.35);
+  color: var(--red); padding: 8px 20px; font-size: 12px; letter-spacing: 1px;
+}
+
+/* ── Stats row ──────────────────────────────────────── */
+.stats-row {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin: 20px 0;
+}
+.stat-card {
+  border: 1px solid var(--border); background: var(--surface);
+  padding: 18px 16px; text-align: center; position: relative; overflow: hidden;
+}
+.stat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--cyan); box-shadow: 0 0 10px var(--cyan);
+}
+.stat-label { font-size: 10px; letter-spacing: 3px; color: var(--text-dim); margin-bottom: 10px; }
+.stat-value { font-size: 38px; color: var(--cyan); text-shadow: 0 0 24px rgba(0,229,255,0.45); line-height: 1; }
+.stat-sub   { font-size: 10px; color: var(--text-dim); margin-top: 6px; min-height: 14px; }
+
+/* ── Section header ─────────────────────────────────── */
+.sec-hdr {
+  display: flex; align-items: center; gap: 14px;
+  margin: 28px 0 14px; color: var(--cyan); font-size: 11px; letter-spacing: 3px;
+}
+.sec-hdr::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── Node cards ─────────────────────────────────────── */
+#nodes-grid { display: grid; gap: 12px; }
+
+.node-card {
+  border: 1px solid var(--border); background: var(--surface);
+  padding: 16px 20px; display: grid;
+  grid-template-columns: 12px 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 4px 16px; align-items: center;
+}
+.node-dot { width: 12px; height: 12px; border-radius: 50%; grid-row: 1; }
+.node-dot.ready     { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.node-dot.not-ready { background: var(--red);   box-shadow: 0 0 8px var(--red); }
+
+.node-name   { font-size: 15px; color: var(--cyan); grid-column: 2; grid-row: 1; }
+.node-badge  { grid-column: 3; grid-row: 1; font-size: 10px; letter-spacing: 1px; padding: 3px 8px; border: 1px solid currentColor; }
+.node-badge.ready     { color: var(--green); }
+.node-badge.not-ready { color: var(--red); }
+
+.node-metrics { grid-column: 1/-1; grid-row: 2; display: grid; grid-template-columns: 50px 1fr 90px; gap: 6px 12px; align-items: center; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.met-label { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); }
+.bar-track { height: 6px; background: rgba(0,229,255,0.08); border: 1px solid var(--border); }
+.bar-fill  { height: 100%; background: var(--cyan); box-shadow: 0 0 6px rgba(0,229,255,0.4); transition: width .8s ease; }
+.bar-fill.warn   { background: var(--amber); box-shadow: 0 0 6px rgba(255,171,64,0.4); }
+.bar-fill.danger { background: var(--red);   box-shadow: 0 0 6px rgba(255,23,68,0.4); }
+.met-val { font-size: 11px; text-align: right; color: var(--text); }
+.met-no-data { grid-column: 1/-1; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+/* ── Namespace controls ─────────────────────────────── */
+.ns-controls { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; font-size: 11px; color: var(--text-dim); }
+.ns-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.ns-controls input[type=checkbox] { accent-color: var(--cyan); }
+
+/* ── Namespace grid ─────────────────────────────────── */
+#namespace-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 12px; }
+
+.ns-card { border: 1px solid var(--border); background: var(--surface); padding: 14px; transition: border-color .25s; }
+.ns-card:hover { border-color: var(--border-hi); }
+
+.ns-card-hdr { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); gap: 8px; }
+.ns-name  { font-size: 12px; color: var(--cyan); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ns-count { font-size: 10px; color: var(--text-dim); white-space: nowrap; flex-shrink: 0; }
+
+.pod-dots { display: flex; flex-wrap: wrap; gap: 4px; min-height: 16px; }
+
+.pod-dot {
+  width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; cursor: default;
+  position: relative;
+}
+.pod-dot.Running           { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.pod-dot.NotReady,
+.pod-dot.Pending           { background: var(--amber); box-shadow: 0 0 5px var(--amber); animation: blink-warn 2s ease-in-out infinite; }
+.pod-dot.Succeeded         { background: var(--blue); }
+.pod-dot.Failed,
+.pod-dot.CrashLoopBackOff,
+.pod-dot.Error,
+.pod-dot.OOMKilled         { background: var(--red); box-shadow: 0 0 5px var(--red); animation: blink-warn .8s ease-in-out infinite; }
+.pod-dot.Terminating       { background: var(--gray); opacity: .45; }
+.pod-dot.Unknown,
+.pod-dot.ContainerCreating { background: var(--gray); }
+
+@keyframes blink-warn { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+/* CSS tooltip via data-tip */
+.pod-dot:hover::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: #060c12; border: 1px solid var(--border-hi);
+  color: var(--text); padding: 5px 9px;
+  white-space: nowrap; font-size: 11px; pointer-events: none; z-index: 60;
+}
+
+.pod-overflow { font-size: 10px; color: var(--text-dim); align-self: center; padding: 2px 4px; }
+
+/* ── Alerts ─────────────────────────────────────────── */
+#alerts-section { display: none; }
+.alert-list { display: grid; gap: 8px; }
+.alert-item {
+  border: 1px solid rgba(255,23,68,.35); background: rgba(255,23,68,.05);
+  padding: 10px 14px; display: flex; align-items: center; gap: 12px; font-size: 12px;
+}
+.alert-icon   { color: var(--red); }
+.alert-ns     { color: var(--text-dim); }
+.alert-name   { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alert-status { font-size: 10px; letter-spacing: 1px; padding: 2px 6px; border: 1px solid currentColor; flex-shrink: 0; }
+.alert-status.crash { color: var(--red); }
+.alert-status.warn  { color: var(--amber); }
+.alert-restarts { font-size: 11px; color: var(--amber); flex-shrink: 0; }
+
+/* ── Footer ─────────────────────────────────────────── */
+footer {
+  margin-top: 48px; padding: 16px 20px; border-top: 1px solid var(--border);
+  text-align: center; font-size: 11px; color: var(--text-dim); letter-spacing: 1px;
+  position: relative; z-index: 1;
+}
+footer a { color: var(--cyan); text-decoration: none; }
+
+/* ── Responsive ─────────────────────────────────────── */
+@media (max-width: 800px) { .stats-row { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 480px) { .stat-value { font-size: 28px; } .logo-main { font-size: 14px; } }
+</style>
+</head>
+<body>
+
+<div id="error-banner"></div>
+
+<header>
+  <div class="logo">
+    <div class="logo-main">◈ CLUSTER COMMAND</div>
+    <div class="logo-sub">KAMRADTFAMILY.NET · K3S · ROCKPORT, ME</div>
+  </div>
+  <div class="live-badge">
+    <div class="live-dot"></div>
+    LIVE
+  </div>
+  <div class="refresh-wrap">
+    <svg class="countdown-svg" viewBox="0 0 36 36">
+      <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(0,229,255,0.12)" stroke-width="3"/>
+      <circle id="countdown-arc" cx="18" cy="18" r="15" fill="none"
+        stroke="#00e5ff" stroke-width="3" stroke-linecap="butt"
+        stroke-dasharray="94.25" stroke-dashoffset="0"
+        transform="rotate(-90 18 18)"/>
+    </svg>
+    <span id="next-refresh">15s</span>
+  </div>
+</header>
+
+<div class="page">
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">NODES</div>
+      <div class="stat-value" id="stat-nodes">–</div>
+      <div class="stat-sub" id="stat-nodes-sub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">PODS</div>
+      <div class="stat-value" id="stat-pods">–</div>
+      <div class="stat-sub" id="stat-pods-sub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">RUNNING</div>
+      <div class="stat-value" id="stat-running">–</div>
+      <div class="stat-sub" id="stat-running-sub"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">NAMESPACES</div>
+      <div class="stat-value" id="stat-ns">–</div>
+      <div class="stat-sub" id="stat-ns-sub"></div>
+    </div>
+  </div>
+
+  <div class="sec-hdr">NODES</div>
+  <div id="nodes-grid"></div>
+
+  <div class="sec-hdr">NAMESPACES</div>
+  <div class="ns-controls">
+    <label>
+      <input type="checkbox" id="show-system" onchange="render(lastData)">
+      show system namespaces
+    </label>
+    <span id="ns-hint"></span>
+  </div>
+  <div id="namespace-grid"></div>
+
+  <div id="alerts-section">
+    <div class="sec-hdr">ALERTS</div>
+    <div id="alert-list" class="alert-list"></div>
+  </div>
+
+</div>
+
+<footer>
+  BUILT BY <a href="https://profile.kamradtfamily.net">R. L. KAMRADT</a>
+  &nbsp;·&nbsp; UPDATED <span id="last-updated">–</span>
+  &nbsp;·&nbsp; READ-ONLY · NO AUTH REQUIRED
+</footer>
+
+<script>
+const REFRESH_MS = 15000;
+const SYSTEM_NS = new Set([
+  'kube-system','kube-public','kube-node-lease',
+  'cert-manager','local-path-storage','metallb-system',
+]);
+
+let lastData = null;
+let refreshTimer = null;
+let countdownInterval = null;
+
+// ── Fetch ────────────────────────────────────────────
+async function fetchData() {
+  try {
+    const res = await fetch('/api/cluster');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    lastData = data;
+    render(data);
+    showError(null);
+  } catch (e) {
+    showError(`⚠  ${e.message}`);
+  }
+  scheduleNext();
+}
+
+function scheduleNext() {
+  clearTimeout(refreshTimer);
+  clearInterval(countdownInterval);
+  let secs = REFRESH_MS / 1000;
+  tick(secs);
+  countdownInterval = setInterval(() => { secs = Math.max(0, secs - 1); tick(secs); }, 1000);
+  refreshTimer = setTimeout(fetchData, REFRESH_MS);
+}
+
+function tick(secs) {
+  document.getElementById('next-refresh').textContent = `${secs}s`;
+  const arc = document.getElementById('countdown-arc');
+  arc.style.strokeDashoffset = 94.25 * (1 - secs / (REFRESH_MS / 1000));
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  if (msg) { el.textContent = msg; el.style.display = 'block'; }
+  else { el.style.display = 'none'; }
+}
+
+// ── Render ───────────────────────────────────────────
+function render(data) {
+  if (!data) return;
+  const showSys = document.getElementById('show-system').checked;
+  const { nodes, pods, namespaces, deployments, timestamp } = data;
+
+  const running   = pods.filter(p => p.status === 'Running');
+  const problems  = pods.filter(p =>
+    ['Failed','CrashLoopBackOff','Error','OOMKilled'].includes(p.status) || p.restarts > 10
+  );
+  const visibleNs = namespaces.filter(ns => showSys || !SYSTEM_NS.has(ns));
+  const hiddenCt  = namespaces.length - visibleNs.length;
+
+  // Stats
+  set('stat-nodes',       nodes.length);
+  set('stat-nodes-sub',   nodes.every(n => n.ready) ? 'all ready' : `${nodes.filter(n=>!n.ready).length} not ready`);
+  set('stat-pods',        pods.length);
+  set('stat-pods-sub',    `${deployments.length} deployments`);
+  set('stat-running',     running.length);
+  set('stat-running-sub', problems.length ? `${problems.length} need attention` : 'all healthy');
+  set('stat-ns',          namespaces.length);
+  set('stat-ns-sub',      `${visibleNs.length} shown`);
+  set('ns-hint',          hiddenCt ? `(${hiddenCt} system hidden)` : '');
+
+  renderNodes(nodes);
+  renderNamespaces(visibleNs, pods, deployments);
+  renderAlerts(problems);
+  set('last-updated', new Date(timestamp).toLocaleTimeString());
+}
+
+// ── Nodes ────────────────────────────────────────────
+function renderNodes(nodes) {
+  document.getElementById('nodes-grid').innerHTML = nodes.map(node => {
+    const rc = node.ready ? 'ready' : 'not-ready';
+    const label = node.ready ? 'READY' : 'NOT READY';
+    const memGB = (node.memCapacity / 1073741824).toFixed(1);
+
+    let metricsHtml;
+    if (node.metrics) {
+      const cpuPct = node.cpuCapacity ? Math.round(node.metrics.cpu / node.cpuCapacity * 100) : 0;
+      const memPct = node.memCapacity ? Math.round(node.metrics.memory / node.memCapacity * 100) : 0;
+      const cc = pct => pct > 85 ? 'danger' : pct > 70 ? 'warn' : '';
+      metricsHtml = `
+        <div class="node-metrics">
+          <div class="met-label">CPU</div>
+          <div class="bar-track"><div class="bar-fill ${cc(cpuPct)}" style="width:${cpuPct}%"></div></div>
+          <div class="met-val">${cpuPct}% &nbsp; ${node.cpuCapacity} cores</div>
+          <div class="met-label">MEM</div>
+          <div class="bar-track"><div class="bar-fill ${cc(memPct)}" style="width:${memPct}%"></div></div>
+          <div class="met-val">${memPct}% &nbsp; ${memGB} GB</div>
+        </div>`;
+    } else {
+      metricsHtml = `
+        <div class="node-metrics">
+          <div class="met-label">CPU</div>
+          <div class="bar-track"><div class="bar-fill" style="width:0"></div></div>
+          <div class="met-val">${node.cpuCapacity} cores</div>
+          <div class="met-label">MEM</div>
+          <div class="bar-track"><div class="bar-fill" style="width:0"></div></div>
+          <div class="met-val">${memGB} GB</div>
+          <div class="met-no-data">ⓘ metrics-server unavailable — install for live usage data</div>
+        </div>`;
+    }
+
+    return `<div class="node-card">
+      <div class="node-dot ${rc}"></div>
+      <div class="node-name">${esc(node.name)}</div>
+      <div class="node-badge ${rc}">${label}</div>
+      ${metricsHtml}
+    </div>`;
+  }).join('');
+}
+
+// ── Namespaces ───────────────────────────────────────
+function renderNamespaces(namespaces, pods, deployments) {
+  const MAX_DOTS = 48;
+  const sorted = [...namespaces].sort((a, b) =>
+    pods.filter(p => p.namespace === b).length - pods.filter(p => p.namespace === a).length
+  );
+
+  document.getElementById('namespace-grid').innerHTML = sorted.map(ns => {
+    const nsPods = pods.filter(p => p.namespace === ns);
+    const shown  = nsPods.slice(0, MAX_DOTS);
+    const extra  = nsPods.length - MAX_DOTS;
+    const nsDeps = deployments.filter(d => d.namespace === ns);
+    const depStr = nsDeps.length
+      ? ` · ${nsDeps.filter(d => d.ready === d.desired).length}/${nsDeps.length}dep`
+      : '';
+
+    const dots = shown.map(p => {
+      const tip = `${p.name} · ${p.status}${p.restarts ? ` · ${p.restarts}↺` : ''}`;
+      return `<div class="pod-dot ${esc(p.status)}" data-tip="${esc(tip)}"></div>`;
+    }).join('');
+
+    return `<div class="ns-card">
+      <div class="ns-card-hdr">
+        <div class="ns-name" title="${esc(ns)}">${esc(ns)}</div>
+        <div class="ns-count">${nsPods.length}${depStr}</div>
+      </div>
+      <div class="pod-dots">${dots}${extra > 0 ? `<span class="pod-overflow">+${extra}</span>` : ''}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Alerts ───────────────────────────────────────────
+function renderAlerts(problems) {
+  const section = document.getElementById('alerts-section');
+  if (!problems.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+
+  document.getElementById('alert-list').innerHTML = problems.slice(0, 25).map(p => {
+    const isCrash = ['Failed','CrashLoopBackOff','Error','OOMKilled'].includes(p.status);
+    return `<div class="alert-item">
+      <span class="alert-icon">⚠</span>
+      <span class="alert-ns">${esc(p.namespace)}/</span>
+      <span class="alert-name">${esc(p.name)}</span>
+      <span class="alert-status ${isCrash ? 'crash' : 'warn'}">${esc(p.status)}</span>
+      ${p.restarts > 0 ? `<span class="alert-restarts">${p.restarts} restarts</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Util ─────────────────────────────────────────────
+function set(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val ?? '';
+}
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Init ─────────────────────────────────────────────
+fetchData();
+</script>
+</body>
+</html>
