@@ -7,6 +7,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const CACHE_MS = parseInt(process.env.CACHE_MS || '15000');
 
+// Only return full pod details (including names) for these namespaces.
+// All other namespaces are collapsed to a per-namespace count in hiddenPodCounts.
+const SHOWCASE_NAMESPACES = new Set([
+  'home', 'k8s-dashboard', 'gol', 'portfolio', 'llm', 'cluster-ops-agent',
+  'clodapp', 'rkamradt-platform', 'receipts', 'blackbook', 'javaman',
+  'naivefront', 'simcity-lite', 'monitoring',
+]);
+
 // In-cluster service account credentials
 let k8sToken = null;
 let k8sAgent = null;
@@ -122,12 +130,22 @@ async function getClusterData() {
     ready: d.status?.readyReplicas || 0,
   }));
 
-  return { nodes, pods, namespaces, deployments, timestamp: new Date().toISOString() };
+  // Split pods: full details only for showcase namespaces; counts for the rest.
+  const showcasePods = pods.filter(p => SHOWCASE_NAMESPACES.has(p.namespace));
+  const hiddenPodCounts = {};
+  for (const p of pods) {
+    if (!SHOWCASE_NAMESPACES.has(p.namespace)) {
+      hiddenPodCounts[p.namespace] = (hiddenPodCounts[p.namespace] || 0) + 1;
+    }
+  }
+
+  return { nodes, pods: showcasePods, hiddenPodCounts, namespaces, deployments, timestamp: new Date().toISOString() };
 }
 
 let cache = null;
 let cacheTime = 0;
 
+app.disable('x-powered-by');
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/cluster', async (req, res) => {
