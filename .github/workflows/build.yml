@@ -4,48 +4,10 @@ on:
   push:
     branches: [main]
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set image tag
-        id: tag
-        run: echo "tag=sha-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-      - name: Update version-values.yaml in helm-charts
-        run: |
-          git clone https://x-access-token:${{ secrets.HELM_CHARTS_PAT }}@github.com/rkamradt/rkamradt-helm-charts.git
-          cd rkamradt-helm-charts
-          printf 'image:\n  tag: "%s"\n' "${{ steps.tag.outputs.tag }}" > k8s-dashboard/version-values.yaml
-          git config user.email "actions@github.com"
-          git config user.name "GitHub Actions"
-          git add k8s-dashboard/version-values.yaml
-          git commit -m "Update k8s-dashboard image tag to ${{ steps.tag.outputs.tag }}"
-          git push
+  build:
+    uses: rkamradt/ci-workflows/.github/workflows/node-image.yml@v1
+    with:
+      helm-chart-dir: k8s-dashboard
+      push-latest: true
+    secrets: inherit
